@@ -87,3 +87,16 @@ async def list_completed_tasks(session, telegram_id: int) -> list[Task]:
     return list(result.scalars().all())
 
 
+async def list_overdue_tasks(session, telegram_id: int, now):
+    result = await session.execute(
+        select(Task)
+        .where(
+            Task.telegram_id == telegram_id,
+            Task.is_completed.is_(False),
+            Task.due_at.is_not(None),
+            Task.due_at < now,
+        )
+        .order_by(Task.due_at.asc())
+    )
+
+    return result.scalars().all()

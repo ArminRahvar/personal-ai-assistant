@@ -2,6 +2,7 @@ from aiogram import Router, F
 from aiogram.types import Message
 from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo
+import logging
 
 from sqlalchemy import select
 from app.database.models import User, Task, Reminder
@@ -15,10 +16,12 @@ from app.services.task_service import (
     complete_task,
     delete_task,
     list_completed_tasks,
+    list_overdue_tasks,
 )
 
 
 router = Router()
+logger = logging.getLogger(__name__)
 
 
 @router.message(F.text.startswith("/add_task"))
@@ -266,3 +269,49 @@ async def today_handler(message: Message):
         )
 
     await message.answer("\n".join(lines))
+
+
+
+
+@router.message(F.text == "/overdue_tasks")
+async def overdue_tasks_handler(message: Message):
+    try:
+        async with SessionFactory() as session:
+            result = await session.execute(
+                select(User).where(
+                    User.telegram_id == message.from_user.id
+                )
+            )
+            user = result.scalar_one_or_none()
+
+            if user is None:
+                await message.answer("اطلاعات کاربر پیدا نشد.")
+                return
+
+            timezone = ZoneInfo(user.timezone)
+            now = datetime.now(timezone)
+
+            tasks = await list_overdue_tasks(
+                session,
+                message.from_user.id,
+                now,
+            )
+
+            if not tasks:
+                await message.answer("تسک عقب‌افتاده‌ای نداری.")
+                return
+
+            lines = ["تسک‌های عقب‌افتاده:\n"]
+
+            for task in tasks:
+                due_at = task.due_at.astimezone(timezone)
+                lines.append(
+                    f"#{task.id} — {task.title}\n"
+                    f"موعد: {due_at.strftime('%Y-%m-%d %H:%M')}"
+                )
+
+            await message.answer("\n\n".join(lines))
+
+    except Exception:
+        logger.exception("Failed to list overdue tasks")
+        await message.answer("نمایش تسک‌های عقب‌افتاده با خطا مواجه شد.")
