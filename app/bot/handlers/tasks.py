@@ -6,7 +6,7 @@ import logging
 
 from sqlalchemy import select
 from app.database.models import User, Task, Reminder
-from app.services.reminder_service import create_reminder
+from app.services.reminder_service import create_reminder,sync_task_reminder
 
 
 from app.database.connection import SessionFactory
@@ -17,7 +17,9 @@ from app.services.task_service import (
     delete_task,
     list_completed_tasks,
     list_overdue_tasks,
+    update_task,
 )
+
 
 
 router = Router()
@@ -315,3 +317,94 @@ async def overdue_tasks_handler(message: Message):
     except Exception:
         logger.exception("Failed to list overdue tasks")
         await message.answer("نمایش تسک‌های عقب‌افتاده با خطا مواجه شد.")
+
+
+@router.message(F.text.startswith("/edit_task"))
+async def edit_task_handler(message: Message):
+    try:
+        parts = message.text.split(maxsplit=4)
+
+        if len(parts) < 5:
+            await message.answer(
+                "فرمت صحیح:\n"
+                "/edit_task ID YYYY-MM-DD HH:MM عنوان جدید\n\n"
+                "مثال:\n"
+                "/edit_task 12 2026-10-20 18:00 مطالعه پایتون"
+            )
+            return
+
+        task_id = int(parts[1])
+        due_at = datetime.strptime(
+            f"{parts[2]} {parts[3]}",
+            "%Y-%m-%d %H:%M",
+        )
+        title = parts[4].strip()
+
+        if not title:
+            await message.answer("عنوان تسک نمی‌تواند خالی باشد.")
+            return
+
+        async with SessionFactory() as session:
+            # دریافت timezone کاربر
+            user_result = await session.execute(
+                select(User).where(
+                    User.telegram_id == message.from_user.id
+                )
+            )
+            user = user_result.scalar_one_or_none()
+
+            if user is None:
+                await message.answer(
+                    "اطلاعات کاربر پیدا نشد. ابتدا /start را اجرا کن."
+                )
+                return
+
+            user_timezone = ZoneInfo(user.timezone)
+
+            # تبدیل تاریخ محلی به datetime دارای timezone
+            due_at = due_at.replace(tzinfo=user_timezone)
+
+            if due_at <= datetime.now(user_timezone):
+                await message.answer(
+                    "موعد تسک باید در آینده باشد."
+                )
+                return
+
+            result = await update_task(
+                session=session,
+                telegram_id=message.from_user.id,
+                task_id=task_id,
+                title=title,
+                due_at=due_at,
+            )
+
+            if result is None:
+                await message.answer("تسکی با این شناسه پیدا نشد.")
+                return
+
+            # همگام‌سازی یادآور با موعد جدید تسک
+            await sync_task_reminder(
+                session=session,
+                telegram_id=message.from_user.id,
+                task_id=result.id,
+                text=f"موعد انجام تسک: {result.title}",
+                scheduled_at=result.due_at,
+            )
+
+        await message.answer(
+            f"تسک ویرایش شد.\n"
+            f"شناسه: {result.id}\n"
+            f"عنوان: {result.title}\n"
+            f"موعد: {result.due_at.strftime('%Y-%m-%d %H:%M')}"
+        )
+
+    except ValueError:
+        await message.answer(
+            "شناسه یا تاریخ نامعتبر است. فرمت تاریخ را بررسی کن."
+        )
+
+    except Exception:
+        logger.exception("Failed to edit task")
+        await message.answer(
+            "ویرایش تسک با خطا مواجه شد."
+        )
