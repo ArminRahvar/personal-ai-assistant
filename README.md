@@ -57,7 +57,10 @@ pollers for the same token.
 
 ## Bot commands
 
-Send `/help` to the bot for the complete command list. Common commands include
+After `/start`, the bot shows a persistent bottom menu for tasks, adding tasks,
+today's schedule, reminders, memories, help, settings, and chat. Menu buttons
+open the matching existing flow; typed messages and slash commands continue to
+work as before. Send `/help` for the full command list. Common commands include
 `/tasks`, `/add_task`, `/reminders`, `/remind`, `/timezone`, and `/clear_history`.
 Automatic memory extraction and use are **off by default**. Use `/memory_on`
 to opt in and `/memory_off` to turn them off again. Existing memories remain

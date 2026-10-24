@@ -1,5 +1,5 @@
 
-from aiogram import Router
+from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.types import Message
 
@@ -77,6 +77,7 @@ async def remember_handler(message: Message):
     await message.answer(f"ذخیره شد. شناسه حافظه:\n{memory.id}")
 
 
+@router.message(F.text == "🧠 حافظه‌ها")
 @router.message(Command("memories"))
 async def memories_handler(message: Message):
     if not message.from_user:

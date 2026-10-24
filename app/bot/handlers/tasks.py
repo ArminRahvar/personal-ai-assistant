@@ -99,6 +99,7 @@ async def add_task_handler(message: Message):
     await message.answer(f"تسک ثبت شد: {task.title} (ID: {task.id})")
 
 
+@router.message(F.text == "📋 تسک‌ها")
 @router.message(F.text == "/tasks")
 async def list_tasks_handler(message: Message):
     async with SessionFactory() as session:
@@ -175,6 +176,7 @@ async def completed_tasks_handler(message: Message):
     await message.answer(f"تسک‌های تکمیل‌شده:\n\n{text}")
 
 
+@router.message(F.text == "📅 برنامه امروز")
 @router.message(F.text == "/today")
 async def today_handler(message: Message):
     telegram_id = message.from_user.id

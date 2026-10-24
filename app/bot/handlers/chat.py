@@ -136,33 +136,3 @@ async def chat_handler(message: Message):
         await message.answer(
             "پاسخ آماده شد اما ارسال آن در تلگرام با خطا مواجه شد."
         )
-
-
-@router.message(F.text == "/help")
-async def help_handler(message: Message):
-    await message.answer(
-        "راهنمای دستیار شخصی\n\n"
-        "گفت‌وگو:\n"
-        "هر پیام متنی بفرست تا با هوش مصنوعی صحبت کنی.\n"
-        "/clear_history — پاک‌کردن تاریخچه گفتگو\n\n"
-        "حافظه:\n"
-        "/remember متن — ذخیره یک حافظه\n"
-        "/memories — نمایش حافظه‌ها\n"
-        "/forget ID — حذف حافظه\n\n"
-        "/memory_on — فعال‌کردن ذخیره و استفاده خودکار از حافظه\n"
-        "/memory_off — غیرفعال‌کردن حافظه خودکار\n\n"
-        "تسک‌ها:\n"
-        "/add_task عنوان — افزودن تسک\n"
-        "/add_task YYYY-MM-DD HH:MM عنوان — افزودن تسک زمان‌دار\n"
-        "/tasks — نمایش تسک‌های باقی‌مانده\n"
-        "/complete_task ID — تکمیل تسک\n"
-        "/delete_task ID — حذف تسک\n"
-        "/completed_tasks — تسک‌های تکمیل‌شده\n"
-        "/today — برنامه امروز\n\n"
-        "یادآورها:\n"
-        "/remind YYYY-MM-DD HH:MM متن — ساخت یادآور\n"
-        "/reminders — نمایش یادآورها\n"
-        "/delete_reminder ID — حذف یادآور\n\n"
-        "تنظیمات:\n"
-        "/timezone — تنظیم منطقه زمانی"
-    )

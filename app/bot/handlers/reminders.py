@@ -2,7 +2,7 @@
 from datetime import timezone
 from zoneinfo import ZoneInfo
 
-from aiogram import Router
+from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.types import Message
 from sqlalchemy import select
@@ -14,6 +14,7 @@ from app.services.reminder_service import delete_reminder
 router = Router()
 
 
+@router.message(F.text == "⏰ یادآورها")
 @router.message(Command("reminders"))
 async def list_reminders(message: Message):
     if not message.from_user:
