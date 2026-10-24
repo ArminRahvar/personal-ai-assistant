@@ -4,7 +4,7 @@ from sqlalchemy import select
 
 from app.core.config import get_settings
 from app.database.connection import SessionFactory
-from app.database.models import ConversationMessage
+from app.database.models import ConversationMessage, User
 from app.services.memory_service import list_memories
 from openai import AsyncOpenAI, APIConnectionError, APITimeoutError, RateLimitError, InternalServerError
 settings = get_settings()
@@ -37,7 +37,15 @@ async def request_with_retry(messages: list[dict]) -> str:
 
 async def generate_response(message: str, telegram_id: int) -> str:
     async with SessionFactory() as session:
-        memories = await list_memories(session, telegram_id)
+        user_result = await session.execute(
+            select(User.memory_enabled).where(User.telegram_id == telegram_id)
+        )
+        memory_enabled = user_result.scalar_one_or_none() is True
+        memories = (
+            await list_memories(session, telegram_id)
+            if memory_enabled
+            else []
+        )
 
         result = await session.execute(
             select(ConversationMessage)

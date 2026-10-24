@@ -6,12 +6,10 @@ import logging
 
 from sqlalchemy import select
 from app.database.models import User, Task, Reminder
-from app.services.reminder_service import create_reminder,sync_task_reminder
-
-
 from app.database.connection import SessionFactory
 from app.services.task_service import (
     add_task,
+    add_task_with_reminder,
     list_tasks,
     complete_task,
     delete_task,
@@ -74,17 +72,10 @@ async def add_task_handler(message: Message):
                     await message.answer("عنوان تسک رو وارد کن.")
                     return
 
-                task = await add_task(
+                task = await add_task_with_reminder(
                     session,
                     telegram_id,
                     title,
-                    due_at=due_at,
-                )
-
-                await create_reminder(
-                    session,
-                    telegram_id,
-                    f"موعد انجام تسک: {title}",
                     due_at,
                 )
 
@@ -381,15 +372,6 @@ async def edit_task_handler(message: Message):
             if result is None:
                 await message.answer("تسکی با این شناسه پیدا نشد.")
                 return
-
-            # همگام‌سازی یادآور با موعد جدید تسک
-            await sync_task_reminder(
-                session=session,
-                telegram_id=message.from_user.id,
-                task_id=result.id,
-                text=f"موعد انجام تسک: {result.title}",
-                scheduled_at=result.due_at,
-            )
 
         await message.answer(
             f"تسک ویرایش شد.\n"

@@ -66,38 +66,3 @@ async def delete_reminder(
     await session.delete(reminder)
     await session.commit()
     return True
-
-
-async def sync_task_reminder(
-    session: AsyncSession,
-    telegram_id: int,
-    task_id: int,
-    text: str,
-    scheduled_at: datetime | None,
-) -> None:
-    result = await session.execute(
-        select(Reminder).where(
-            Reminder.telegram_id == telegram_id,
-            Reminder.task_id == task_id,
-            Reminder.is_sent.is_(False),
-        )
-    )
-
-    for reminder in result.scalars().all():
-        await session.delete(reminder)
-
-    if scheduled_at is not None:
-        if scheduled_at.tzinfo is None:
-            raise ValueError("scheduled_at must be timezone-aware")
-
-        if scheduled_at > datetime.now(timezone.utc):
-            session.add(
-                Reminder(
-                    telegram_id=telegram_id,
-                    task_id=task_id,
-                    text=text,
-                    scheduled_at=scheduled_at,
-                )
-            )
-
-    await session.commit()

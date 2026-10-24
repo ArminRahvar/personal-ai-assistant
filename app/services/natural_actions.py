@@ -10,7 +10,7 @@ from sqlalchemy import select
 from app.core.config import get_settings
 from app.database.connection import SessionFactory
 from app.database.models import User
-from app.services.task_service import add_task
+from app.services.task_service import add_task, add_task_with_reminder
 from app.services.reminder_service import create_reminder
 
 logger = logging.getLogger(__name__)
@@ -23,19 +23,19 @@ client = AsyncOpenAI(
 
 
 async def handle_natural_action(text: str, telegram_id: int) -> str | None:
-    try:
-        async with SessionFactory() as session:
-            result = await session.execute(
-                select(User).where(User.telegram_id == telegram_id)
-            )
-            user = result.scalar_one_or_none()
+    async with SessionFactory() as session:
+        result = await session.execute(
+            select(User).where(User.telegram_id == telegram_id)
+        )
+        user = result.scalar_one_or_none()
 
-            if user is None:
-                return None
+        if user is None:
+            return None
 
-            timezone = ZoneInfo(user.timezone)
-            now = datetime.now(timezone)
+        user_timezone = ZoneInfo(user.timezone)
+        now = datetime.now(user_timezone)
 
+        try:
             response = await client.chat.completions.create(
                 model=settings.llm_model,
                 temperature=0,
@@ -62,64 +62,76 @@ async def handle_natural_action(text: str, telegram_id: int) -> str | None:
                     {"role": "user", "content": text},
                 ],
             )
-
             data = json.loads(response.choices[0].message.content or "{}")
-            action = data.get("action")
-            title = data.get("title", "").strip()
-            date_text = data.get("datetime")
+        except Exception:
+            logger.exception("Natural action classification failed")
+            return None
 
-            if action not in ("task", "reminder") or not title:
+        if not isinstance(data, dict):
+            logger.warning("Natural action classifier returned a non-object")
+            return None
+
+        action = data.get("action")
+        raw_title = data.get("title")
+        date_text = data.get("datetime")
+        if not isinstance(raw_title, str) or (
+            date_text is not None and not isinstance(date_text, str)
+        ):
+            logger.warning("Natural action classifier returned invalid fields")
+            return None
+
+        title = raw_title.strip()
+        if action not in ("task", "reminder") or not title:
+            return None
+
+        due_at = None
+        if date_text:
+            try:
+                due_at = datetime.fromisoformat(date_text).replace(
+                    tzinfo=user_timezone
+                )
+            except ValueError:
+                logger.warning("Natural action classifier returned invalid datetime")
                 return None
 
-            due_at = None
-            if date_text:
-                due_at = datetime.fromisoformat(date_text).replace(
-                    tzinfo=timezone
-                )
+            if due_at <= now:
+                return "زمانی که مشخص کردی گذشته؛ لطفاً یک زمان آینده انتخاب کن."
 
-                if due_at <= now:
-                    return "زمانی که مشخص کردی گذشته؛ لطفاً یک زمان آینده انتخاب کن."
+        if action == "reminder":
+            if due_at is None:
+                return "برای تنظیم یادآور، تاریخ و ساعت رو هم مشخص کن."
 
-            if action == "reminder":
-                if due_at is None:
-                    return "برای تنظیم یادآور، تاریخ و ساعت رو هم مشخص کن."
+            await create_reminder(
+                session,
+                telegram_id,
+                title,
+                due_at,
+            )
+            return (
+                f"یادآور ثبت شد: {title}\n"
+                f"زمان: {due_at.strftime('%Y-%m-%d %H:%M')}"
+            )
 
-                await create_reminder(
-                    session,
-                    telegram_id,
-                    title,
-                    due_at,
-                )
-                return (
-                    f"یادآور ثبت شد: {title}\n"
-                    f"زمان: {due_at.strftime('%Y-%m-%d %H:%M')}"
-                )
-
+        if due_at:
+            task = await add_task_with_reminder(
+                session,
+                telegram_id,
+                title,
+                due_at,
+            )
+        else:
             task = await add_task(
                 session,
                 telegram_id,
                 title,
-                due_at=due_at,
             )
 
-            if due_at:
-                await create_reminder(
-                    session,
-                    telegram_id,
-                    f"موعد انجام تسک: {title}",
-                    due_at,
-                )
+        result_text = f"تسک ثبت شد: {task.title}"
 
-            result_text = f"تسک ثبت شد: {task.title}"
+        if due_at:
+            result_text += (
+                f"\nموعد: {due_at.strftime('%Y-%m-%d %H:%M')}"
+                "\nیادآور هم تنظیم شد."
+            )
 
-            if due_at:
-                result_text += (
-                    f"\nموعد: {due_at.strftime('%Y-%m-%d %H:%M')}"
-                    "\nیادآور هم تنظیم شد."
-                )
-
-            return result_text
-
-    except Exception:
-        logger.exception("Natural action handling failed")
-        return None
+        return result_text

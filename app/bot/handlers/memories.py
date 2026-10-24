@@ -9,8 +9,49 @@ from app.services.memory_service import (
     list_memories,
     delete_memory,
 )
+from app.services.user_service import set_user_memory_enabled
 
 router = Router()
+
+
+@router.message(Command("memory_on"))
+async def memory_on_handler(message: Message):
+    if not message.from_user:
+        return
+
+    async with SessionFactory() as session:
+        updated = await set_user_memory_enabled(
+            session,
+            message.from_user.id,
+            enabled=True,
+        )
+
+    await message.answer(
+        "حافظه خودکار فعال شد. پیام‌های بعدی ممکن است برای ذخیره اطلاعات پایدار بررسی شوند."
+        if updated
+        else "ابتدا دستور /start را اجرا کنید."
+    )
+
+
+@router.message(Command("memory_off"))
+async def memory_off_handler(message: Message):
+    if not message.from_user:
+        return
+
+    async with SessionFactory() as session:
+        updated = await set_user_memory_enabled(
+            session,
+            message.from_user.id,
+            enabled=False,
+        )
+
+    await message.answer(
+        "حافظه خودکار غیرفعال شد؛ حافظه‌های قبلی باقی می‌مانند و در پاسخ‌ها استفاده نمی‌شوند. "
+        "برای حذف آن‌ها از /memories و /forget استفاده کنید."
+        if updated
+        else "ابتدا دستور /start را اجرا کنید."
+    )
+
 
 
 @router.message(Command("remember"))

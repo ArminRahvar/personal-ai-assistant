@@ -11,9 +11,35 @@ from app.services.memory_service import save_memory
 from app.database.connection import SessionFactory
 from app.database.models import ConversationMessage
 from app.services.natural_actions import handle_natural_action
+from app.services.user_service import get_user_memory_enabled
 
 router = Router()
 logger = logging.getLogger(__name__)
+TELEGRAM_MESSAGE_LIMIT = 4096
+
+
+def split_telegram_message(
+    text: str,
+    max_length: int = TELEGRAM_MESSAGE_LIMIT,
+) -> list[str]:
+    if max_length < 1:
+        raise ValueError("max_length must be positive")
+
+    chunks = []
+    start = 0
+    while start < len(text):
+        end = min(start + max_length, len(text))
+        if end < len(text):
+            newline = text.rfind("\n", start, end)
+            space = text.rfind(" ", start, end)
+            boundary = max(newline, space)
+            if boundary > start + max_length // 2:
+                end = boundary + 1
+
+        chunks.append(text[start:end])
+        start = end
+
+    return chunks
 
 
 @router.message(F.text == "/clear_history")
@@ -50,68 +76,65 @@ async def chat_handler(message: Message):
             return
 
     except Exception:
-        logger.exception("Natural action handling failed")
+        logger.exception("Failed to save the requested task or reminder")
+        await message.answer(
+            "ثبت تسک یا یادآور با خطا مواجه شد. لطفاً کمی بعد دوباره تلاش کن."
+        )
+        return
 
     try:
-        candidate = await extract_memory(message.text)
+        async with SessionFactory() as session:
+            memory_enabled = await get_user_memory_enabled(
+                session,
+                message.from_user.id,
+            )
+    except Exception:
+        logger.exception("Failed to read memory preference")
+        memory_enabled = False
 
-        if candidate:
-            async with SessionFactory() as session:
-                await save_memory(
-                    session=session,
-                    telegram_id=message.from_user.id,
-                    content=candidate["content"],
-                    category=candidate["category"],
-                    importance=candidate["importance"],
+    if memory_enabled:
+        try:
+            candidate = await extract_memory(message.text)
+            if candidate:
+                async with SessionFactory() as session:
+                    await save_memory(
+                        session=session,
+                        telegram_id=message.from_user.id,
+                        content=candidate["content"],
+                        category=candidate["category"],
+                        importance=candidate["importance"],
+                    )
+
+                logger.info(
+                    "Memory saved for user %s (category=%s, importance=%s)",
+                    message.from_user.id,
+                    candidate["category"],
+                    candidate["importance"],
                 )
 
-            logger.info("Memory saved: %s", candidate)
-
-    except Exception:
-        logger.exception("Memory extraction or saving failed")
+        except Exception:
+            logger.exception("Memory extraction or saving failed")
 
     try:
         answer = await generate_response(
             message.text,
             message.from_user.id,
         )
-        await message.answer(answer)
-
     except Exception:
         logger.exception("Failed to generate assistant response")
         await message.answer(
             "در حال حاضر ارتباط با مدل هوش مصنوعی برقرار نشد. "
             "کمی بعد دوباره تلاش کن."
         )
-
-
-        if candidate:
-            async with SessionFactory() as session:
-                await save_memory(
-                    session=session,
-                    telegram_id=message.from_user.id,
-                    content=candidate["content"],
-                    category=candidate["category"],
-                    importance=candidate["importance"],
-                )
-
-            logger.info("Memory saved: %s", candidate)
-
-    except Exception:
-        logger.exception("Memory extraction or saving failed")
+        return
 
     try:
-        answer = await generate_response(
-            message.text,
-            message.from_user.id,
-        )
-        await message.answer(answer)
-
+        for chunk in split_telegram_message(answer):
+            await message.answer(chunk)
     except Exception:
-        logger.exception("Failed to generate assistant response")
+        logger.exception("Failed to send assistant response through Telegram")
         await message.answer(
-            "در حال حاضر ارتباط با مدل هوش مصنوعی برقرار نشد. "
-            "کمی بعد دوباره تلاش کن."
+            "پاسخ آماده شد اما ارسال آن در تلگرام با خطا مواجه شد."
         )
 
 
@@ -126,6 +149,8 @@ async def help_handler(message: Message):
         "/remember متن — ذخیره یک حافظه\n"
         "/memories — نمایش حافظه‌ها\n"
         "/forget ID — حذف حافظه\n\n"
+        "/memory_on — فعال‌کردن ذخیره و استفاده خودکار از حافظه\n"
+        "/memory_off — غیرفعال‌کردن حافظه خودکار\n\n"
         "تسک‌ها:\n"
         "/add_task عنوان — افزودن تسک\n"
         "/add_task YYYY-MM-DD HH:MM عنوان — افزودن تسک زمان‌دار\n"

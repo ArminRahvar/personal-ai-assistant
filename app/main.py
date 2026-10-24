@@ -1,32 +1,18 @@
 
-import asyncio
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+from sqlalchemy import text
 
-from app.bot.bot import bot, dp
+from app.database.connection import engine
 
-
-
-from app.services.reminder_scheduler import reminder_scheduler
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    polling_task = asyncio.create_task(dp.start_polling(bot))
-    scheduler_task = asyncio.create_task(reminder_scheduler())
-
     try:
         yield
     finally:
-        scheduler_task.cancel()
-        polling_task.cancel()
-
-        await asyncio.gather(
-            scheduler_task,
-            polling_task,
-            return_exceptions=True,
-        )
-        await bot.session.close()
+        await engine.dispose()
 
 
 app = FastAPI(title="Personal AI Assistant", lifespan=lifespan)
@@ -35,3 +21,17 @@ app = FastAPI(title="Personal AI Assistant", lifespan=lifespan)
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.get("/ready")
+async def ready():
+    try:
+        async with engine.connect() as connection:
+            await connection.execute(text("SELECT 1"))
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Database is unavailable",
+        ) from exc
+
+    return {"status": "ready"}

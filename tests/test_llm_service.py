@@ -25,7 +25,10 @@ async def test_generate_response_uses_user_history():
     session.add_all = MagicMock()
     result = MagicMock()
     result.scalars.return_value.all.return_value = [previous_message]
+    result.scalar_one_or_none.return_value = True
     session.execute.return_value = result
+    memory = MagicMock()
+    memory.content = "Likes tea"
 
     response = MagicMock()
     response.choices[0].message.content = "سلام آرمن!"
@@ -35,7 +38,7 @@ async def test_generate_response_uses_user_history():
         patch(
             "app.services.llm_service.list_memories",
             new_callable=AsyncMock,
-            return_value=[],
+            return_value=[memory],
         ),
         patch(
             "app.services.llm_service.client.chat.completions.create",
@@ -56,6 +59,7 @@ async def test_generate_response_uses_user_history():
         and item["content"] == "اسم من آرمن است"
         for item in messages
     )
+    assert "Likes tea" in messages[0]["content"]
     assert messages[-1] == {"role": "user", "content": "سلام"}
     session.commit.assert_awaited_once()
 

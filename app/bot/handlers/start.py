@@ -23,6 +23,7 @@ async def start_handler(message: Message):
 
     await message.answer(
         "سلام! دستیار شخصی شما آماده است.\n"
-        f"شناسه کاربری شما: {user.id}"
+        f"شناسه کاربری شما: {user.id}\n\n"
+        "حافظه خودکار به‌صورت پیش‌فرض خاموش است. برای فعال‌کردن آن /memory_on "
+        "و برای غیرفعال‌کردن /memory_off را بفرست."
     )
-

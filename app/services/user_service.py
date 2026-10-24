@@ -45,3 +45,31 @@ async def update_user_timezone(
     user.timezone = timezone
     await session.commit()
     return True
+
+
+async def set_user_memory_enabled(
+    session: AsyncSession,
+    telegram_id: int,
+    enabled: bool,
+) -> bool:
+    result = await session.execute(
+        select(User).where(User.telegram_id == telegram_id)
+    )
+    user = result.scalar_one_or_none()
+
+    if user is None:
+        return False
+
+    user.memory_enabled = enabled
+    await session.commit()
+    return True
+
+
+async def get_user_memory_enabled(
+    session: AsyncSession,
+    telegram_id: int,
+) -> bool:
+    result = await session.execute(
+        select(User.memory_enabled).where(User.telegram_id == telegram_id)
+    )
+    return result.scalar_one_or_none() is True
